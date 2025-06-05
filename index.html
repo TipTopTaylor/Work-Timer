@@ -148,6 +148,23 @@
             text-align: center;
         }
 
+        .calendar-header {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 2px;
+            margin-bottom: 5px;
+        }
+
+        .calendar-header-day {
+            aspect-ratio: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: #5a7a5a;
+            font-size: 0.9em;
+        }
+
         .calendar-grid {
             display: grid;
             grid-template-columns: repeat(7, 1fr);
@@ -240,12 +257,29 @@
             background: rgba(255, 255, 255, 0.9);
         }
 
+        .export-import-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
         .export-btn {
             background: linear-gradient(135deg, #6ba6cd, #4682b4);
             color: white;
-            padding: 8px 15px;
+            padding: 10px 15px;
             font-size: 0.9em;
-            margin-top: 10px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(75, 130, 180, 0.2);
+            flex: 1;
+        }
+
+        .export-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(75, 130, 180, 0.3);
         }
 
         @media (max-width: 768px) {
@@ -301,13 +335,16 @@
                     <label for="hourlyRate">Hourly Rate ($):</label>
                     <input type="number" id="hourlyRate" min="1" step="0.5" value="40" onchange="updateHourlyRate()">
                 </div>
-                <button class="export-btn" onclick="exportData()">Export Data</button>
-                <button class="export-btn" onclick="importData()" style="margin-left: 5px;">Import Data</button>
+                <div class="export-import-buttons">
+                    <button class="export-btn" onclick="exportData()">📤 Export Data</button>
+                    <button class="export-btn" onclick="importData()">📥 Import Data</button>
+                </div>
                 <input type="file" id="fileInput" accept=".json" style="display: none;" onchange="handleFileImport(event)">
             </div>
 
             <div class="calendar">
                 <h3>Work Calendar 📅</h3>
+                <div class="calendar-header" id="calendarHeader"></div>
                 <div class="calendar-grid" id="calendar"></div>
             </div>
             
@@ -499,6 +536,7 @@
         }
         
         function generateCalendar() {
+            const calendarHeader = document.getElementById('calendarHeader');
             const calendar = document.getElementById('calendar');
             const today = new Date();
             const currentMonth = today.getMonth();
@@ -510,16 +548,17 @@
             const daysInMonth = lastDay.getDate();
             const startingDayOfWeek = firstDay.getDay();
             
+            // Clear previous content
+            calendarHeader.innerHTML = '';
             calendar.innerHTML = '';
             
-            // Add day headers
+            // Add day headers to separate container
             const dayHeaders = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
             dayHeaders.forEach(day => {
                 const dayElement = document.createElement('div');
-                dayElement.style.fontWeight = 'bold';
-                dayElement.style.color = '#5a7a5a';
+                dayElement.className = 'calendar-header-day';
                 dayElement.textContent = day;
-                calendar.appendChild(dayElement);
+                calendarHeader.appendChild(dayElement);
             });
             
             // Add empty cells for days before month starts
@@ -537,7 +576,7 @@
                 
                 if (dailyTotals[dayDate] && dailyTotals[dayDate].hours > 0) {
                     dayElement.classList.add('worked');
-                    dayElement.title = `Worked ${dailyTotals[dayDate].hours.toFixed(1)} hours - $${dailyTotals[dayDate].earnings.toFixed(2)}`;
+                    dayElement.title = `Worked ${dailyTotals[dayDate].hours.toFixed(1)} hours - ${dailyTotals[dayDate].earnings.toFixed(2)}`;
                 }
                 
                 if (day === today.getDate()) {
