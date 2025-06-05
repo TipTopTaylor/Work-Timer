@@ -207,6 +207,47 @@
             z-index: -1;
         }
 
+        .settings-section {
+            background: rgba(144, 180, 144, 0.1);
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+
+        .settings-section h4 {
+            color: #2d5a2d;
+            margin-bottom: 10px;
+        }
+
+        .settings-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .settings-row label {
+            flex: 1;
+            font-size: 0.9em;
+            color: #5a7a5a;
+        }
+
+        .settings-row input {
+            width: 80px;
+            padding: 5px;
+            border: 1px solid rgba(144, 180, 144, 0.5);
+            border-radius: 5px;
+            background: rgba(255, 255, 255, 0.9);
+        }
+
+        .export-btn {
+            background: linear-gradient(135deg, #6ba6cd, #4682b4);
+            color: white;
+            padding: 8px 15px;
+            font-size: 0.9em;
+            margin-top: 10px;
+        }
+
         @media (max-width: 768px) {
             .container {
                 grid-template-columns: 1fr;
@@ -254,6 +295,17 @@
         </div>
 
         <div class="calendar-section">
+            <div class="settings-section">
+                <h4>Settings ⚙️</h4>
+                <div class="settings-row">
+                    <label for="hourlyRate">Hourly Rate ($):</label>
+                    <input type="number" id="hourlyRate" min="1" step="0.5" value="40" onchange="updateHourlyRate()">
+                </div>
+                <button class="export-btn" onclick="exportData()">Export Data</button>
+                <button class="export-btn" onclick="importData()" style="margin-left: 5px;">Import Data</button>
+                <input type="file" id="fileInput" accept=".json" style="display: none;" onchange="handleFileImport(event)">
+            </div>
+
             <div class="calendar">
                 <h3>Work Calendar 📅</h3>
                 <div class="calendar-grid" id="calendar"></div>
@@ -280,11 +332,67 @@
         let elapsedTime = 0;
         let timerInterval = null;
         let isRunning = false;
-        const hourlyRate = 40;
+        let hourlyRate = 40;
         
-        // In-memory storage for work sessions
+        // Data storage keys
+        const STORAGE_KEYS = {
+            workSessions: 'workTimer_sessions',
+            dailyTotals: 'workTimer_dailyTotals',
+            hourlyRate: 'workTimer_hourlyRate',
+            timerState: 'workTimer_timerState'
+        };
+        
+        // Data arrays
         let workSessions = [];
         let dailyTotals = {};
+        
+        // Local Storage Functions
+        function saveToStorage(key, data) {
+            try {
+                localStorage.setItem(key, JSON.stringify(data));
+            } catch (e) {
+                console.error('Failed to save to localStorage:', e);
+            }
+        }
+        
+        function loadFromStorage(key, defaultValue = null) {
+            try {
+                const item = localStorage.getItem(key);
+                return item ? JSON.parse(item) : defaultValue;
+            } catch (e) {
+                console.error('Failed to load from localStorage:', e);
+                return defaultValue;
+            }
+        }
+        
+        function loadData() {
+            workSessions = loadFromStorage(STORAGE_KEYS.workSessions, []);
+            dailyTotals = loadFromStorage(STORAGE_KEYS.dailyTotals, {});
+            hourlyRate = loadFromStorage(STORAGE_KEYS.hourlyRate, 40);
+            
+            // Update hourly rate input
+            document.getElementById('hourlyRate').value = hourlyRate;
+            
+            // Load timer state if it was running
+            const timerState = loadFromStorage(STORAGE_KEYS.timerState, null);
+            if (timerState && timerState.isRunning) {
+                elapsedTime = Date.now() - timerState.startTime;
+                startTimer();
+            }
+        }
+        
+        function saveTimerState() {
+            const timerState = {
+                isRunning: isRunning,
+                startTime: startTime,
+                elapsedTime: elapsedTime
+            };
+            saveToStorage(STORAGE_KEYS.timerState, timerState);
+        }
+        
+        function clearTimerState() {
+            localStorage.removeItem(STORAGE_KEYS.timerState);
+        }
         
         function formatTime(seconds) {
             const hours = Math.floor(seconds / 3600);
@@ -305,23 +413,32 @@
             document.getElementById('earnings').textContent = formatEarnings(currentHours);
         }
         
-        function toggleTimer() {
-            const startBtn = document.getElementById('startBtn');
+        function startTimer() {
+            startTime = Date.now() - elapsedTime;
+            timerInterval = setInterval(() => {
+                elapsedTime = Date.now() - startTime;
+                updateDisplay();
+                saveTimerState();
+            }, 1000);
             
+            document.getElementById('startBtn').textContent = 'Pause';
+            document.getElementById('startBtn').style.background = 'linear-gradient(135deg, #f0ad4e, #ec971f)';
+            isRunning = true;
+        }
+        
+        function stopTimer() {
+            clearInterval(timerInterval);
+            document.getElementById('startBtn').textContent = 'Start';
+            document.getElementById('startBtn').style.background = 'linear-gradient(135deg, #5cb85c, #4cae4c)';
+            isRunning = false;
+            clearTimerState();
+        }
+        
+        function toggleTimer() {
             if (!isRunning) {
-                startTime = Date.now() - elapsedTime;
-                timerInterval = setInterval(() => {
-                    elapsedTime = Date.now() - startTime;
-                    updateDisplay();
-                }, 1000);
-                startBtn.textContent = 'Pause';
-                startBtn.style.background = 'linear-gradient(135deg, #f0ad4e, #ec971f)';
-                isRunning = true;
+                startTimer();
             } else {
-                clearInterval(timerInterval);
-                startBtn.textContent = 'Start';
-                startBtn.style.background = 'linear-gradient(135deg, #5cb85c, #4cae4c)';
-                isRunning = false;
+                stopTimer();
             }
         }
         
@@ -332,12 +449,16 @@
                 const earnings = hours * hourlyRate;
                 const today = new Date().toDateString();
                 
-                workSessions.push({
+                const session = {
                     date: today,
                     hours: hours,
                     earnings: earnings,
-                    timestamp: new Date()
-                });
+                    timestamp: new Date().toISOString(),
+                    manual: false
+                };
+                
+                workSessions.push(session);
+                saveToStorage(STORAGE_KEYS.workSessions, workSessions);
                 
                 // Update daily totals
                 if (!dailyTotals[today]) {
@@ -345,21 +466,28 @@
                 }
                 dailyTotals[today].hours += hours;
                 dailyTotals[today].earnings += earnings;
+                saveToStorage(STORAGE_KEYS.dailyTotals, dailyTotals);
                 
                 updateCalendar();
                 updateWorkLog();
                 updateTodayStats();
             }
             
-            clearInterval(timerInterval);
+            stopTimer();
             elapsedTime = 0;
             startTime = null;
-            isRunning = false;
-            
-            document.getElementById('startBtn').textContent = 'Start';
-            document.getElementById('startBtn').style.background = 'linear-gradient(135deg, #5cb85c, #4cae4c)';
-            
             updateDisplay();
+        }
+        
+        function updateHourlyRate() {
+            const newRate = parseFloat(document.getElementById('hourlyRate').value);
+            if (newRate > 0) {
+                hourlyRate = newRate;
+                saveToStorage(STORAGE_KEYS.hourlyRate, hourlyRate);
+                updateDisplay();
+                updateTodayStats();
+                updateCalendar();
+            }
         }
         
         function updateTodayStats() {
@@ -436,18 +564,20 @@
                 return;
             }
             
-            const dateObj = new Date(selectedDate + 'T12:00:00'); // Add time to avoid timezone issues
+            const dateObj = new Date(selectedDate + 'T12:00:00');
             const dateString = dateObj.toDateString();
             const earnings = hours * hourlyRate;
             
-            // Add to work sessions
-            workSessions.push({
+            const session = {
                 date: dateString,
                 hours: hours,
                 earnings: earnings,
-                timestamp: dateObj,
+                timestamp: dateObj.toISOString(),
                 manual: true
-            });
+            };
+            
+            workSessions.push(session);
+            saveToStorage(STORAGE_KEYS.workSessions, workSessions);
             
             // Update daily totals
             if (!dailyTotals[dateString]) {
@@ -455,6 +585,7 @@
             }
             dailyTotals[dateString].hours += hours;
             dailyTotals[dateString].earnings += earnings;
+            saveToStorage(STORAGE_KEYS.dailyTotals, dailyTotals);
             
             // Clear inputs
             hoursInput.value = '';
@@ -483,14 +614,92 @@
                 const date = new Date(session.timestamp);
                 const sessionType = session.manual ? '📝 Manual' : '⏱️ Timer';
                 entry.innerHTML = `
-                    <strong>${session.hours.toFixed(1)}h</strong> - ${session.earnings.toFixed(2)} ${sessionType}<br>
+                    <strong>${session.hours.toFixed(1)}h</strong> - $${session.earnings.toFixed(2)} ${sessionType}<br>
                     <small>${date.toLocaleDateString()} ${!session.manual ? date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}</small>
                 `;
                 workLog.appendChild(entry);
             });
         }
         
+        function exportData() {
+            const exportData = {
+                workSessions: workSessions,
+                dailyTotals: dailyTotals,
+                hourlyRate: hourlyRate,
+                exportDate: new Date().toISOString()
+            };
+            
+            const dataStr = JSON.stringify(exportData, null, 2);
+            const dataBlob = new Blob([dataStr], {type: 'application/json'});
+            
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(dataBlob);
+            link.download = `work-timer-data-${new Date().toISOString().split('T')[0]}.json`;
+            link.click();
+        }
+        
+        function importData() {
+            document.getElementById('fileInput').click();
+        }
+        
+        function handleFileImport(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const importData = JSON.parse(e.target.result);
+                    
+                    if (confirm('This will replace all current data. Are you sure?')) {
+                        workSessions = importData.workSessions || [];
+                        dailyTotals = importData.dailyTotals || {};
+                        hourlyRate = importData.hourlyRate || 40;
+                        
+                        // Save imported data
+                        saveToStorage(STORAGE_KEYS.workSessions, workSessions);
+                        saveToStorage(STORAGE_KEYS.dailyTotals, dailyTotals);
+                        saveToStorage(STORAGE_KEYS.hourlyRate, hourlyRate);
+                        
+                        // Update display
+                        document.getElementById('hourlyRate').value = hourlyRate;
+                        updateCalendar();
+                        updateWorkLog();
+                        updateTodayStats();
+                        updateDisplay();
+                        
+                        alert('Data imported successfully!');
+                    }
+                } catch (error) {
+                    alert('Error importing data. Please check the file format.');
+                }
+            };
+            reader.readAsText(file);
+        }
+        
+        // Save data periodically
+        setInterval(() => {
+            if (isRunning) {
+                saveTimerState();
+            }
+        }, 30000); // Save every 30 seconds when timer is running
+        
+        // Handle page visibility changes
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden && isRunning) {
+                saveTimerState();
+            } else if (!document.hidden && isRunning) {
+                // Recalculate elapsed time when page becomes visible again
+                const timerState = loadFromStorage(STORAGE_KEYS.timerState, null);
+                if (timerState && timerState.isRunning) {
+                    elapsedTime = Date.now() - timerState.startTime;
+                    updateDisplay();
+                }
+            }
+        });
+        
         // Initialize
+        loadData();
         updateDisplay();
         generateCalendar();
         updateWorkLog();
